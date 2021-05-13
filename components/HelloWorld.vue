@@ -50,15 +50,33 @@
       <v-btn @click="clear">clear</v-btn>
     </v-form>
     <br />
-    <div v-model=shukei>
-      zankin:{{ shukei.zankin }}<br /><br /><br />
-      <h3>recent 1month</h3>
-      total:{{ shukei.total }}<br />
-      食費:{{ shukei.shokuhi }}<br />
-      日用品:{{ shukei.nitiyohin }}<br />
-      交通費:{{ shukei.kotuhi }}<br />
-      固定費:{{ shukei.koteihi }}<br />
-    </div>
+    <b>zankin:{{ shukei.zankin }}</b>
+    <br /><br /><br />
+    <v-row
+      class="mb-6"
+      no-gutters
+     >
+      <v-col
+        v-for="n in 3"
+      >
+        <v-card
+          class="pa-2"
+          outlined
+          tile
+        >
+
+          
+      <h3>recent {{n}}month</h3>
+      total:{{ shukei[n-1].total }} ({{shukei[n-1].total/n}})<br />
+      食費:{{ shukei[n-1].shokuhi }}<br />
+      日用品:{{ shukei[n-1].nitiyohin }}<br />
+      交通費:{{ shukei[n-1].kotuhi }}<br />
+      固定費:{{ shukei[n-1].koteihi }}<br />
+        </v-card>
+      </v-col>
+    </v-row>
+
+  
     <br /><br />
     <v-spacer></v-spacer>
 
@@ -68,7 +86,8 @@
     <v-data-table
       :headers="headers"
       :items="datas"
-      sort-by="date"
+      sort-by="['date']"
+      sortDesc:="['true']"
       class="elevation-1"
       :items-per-page="30"
     >
@@ -154,7 +173,6 @@
 
     <v-select
       :items="tablenames"
-
       outlined
       :value="tablename"
       @change="changetable"
@@ -223,10 +241,10 @@ export default {
   data: () => ({
     valid: true,
     tables: [],
-    tablenames:[],
+    tablenames: [],
     tableid: null,
     tablename: null,
-    
+
     form: {
       type_input: "out",
       detail: "",
@@ -270,29 +288,57 @@ export default {
   }),
 
   created: async function() {
-    this.db = firebase.firestore(); // dbインスタンスを初期化    
+    this.db = firebase.firestore(); // dbインスタンスを初期化
     firebase.auth().onAuthStateChanged(async (luser) => {
       this.uid = luser.uid;
       this.init_form();
-      await this.initdatatable();      
-      this.init_shukei()
-            
+      await this.initdatatable();
+      this.init_shukei();
     });
   },
 
   methods: {
+    fshukei(ndate){
+        let date=new Date()
+        date.setDate(date.getDate()-ndate)
+        let adatas = this.datas.filter((x) => x.type_input == "out").filter(x=>{
+          let tmp=new Date(x.date)
+          console.log(tmp)
+          return tmp>=date
+        })
+
+        let df = group_by(adatas, "type");
+        console.log(adatas);
+        let res={}
+        let sdf = Object.keys(df).map((key) => {
+          console.log(key);
+          res[key] = sum(df[key]);
+        });
+        console.log(sdf);
+        console.log(res);
+        //this.shukei.zakka=0
+        //this.shukei.shokuhi=0
+        //this.shukei.kotuhi=0
+        let shukei={}
+        shukei.total = sum(res);
+        shukei.zakka = res["雑貨"];
+        shukei.shokuhi = res["食費"];
+        shukei.kotuhi = res["交通費"];
+        shukei.koteihi = res["固定費"];
+        return shukei
+      },
     init_form() {
       this.form.date = getdate();
       this.now = this.form.date;
       this.form.due = this.form.date;
       this.form.type = this.items[0];
       this.form.type_input = "out";
-      this.form.detail=null
-      this.form.amount=null
+      this.form.detail = null;
+      this.form.amount = null;
     },
 
-    init_shukei(){
-      let komoku =this.items 
+    init_shukei() {
+      let komoku = this.items;
 
       this.translate = {
         食費: "shokuhi",
@@ -300,7 +346,7 @@ export default {
         その他: "other",
         交通費: "kotuhi",
         固定費: "koteihi",
-        娯楽費:"gorakuhi"
+        娯楽費: "gorakuhi",
       };
 
       let res = {};
@@ -308,25 +354,7 @@ export default {
         res[k] = 0;
       });
 
-      let adatas = this.datas.filter((x) => x.type_input == "out");
-      let df = group_by(adatas, "type");
-      console.log(adatas);
-
-      let sdf = Object.keys(df).map((key) => {
-        console.log(key);
-        res[key] = sum(df[key]);
-      });
-      console.log(sdf);
-      console.log(res);
-      //this.shukei.zakka=0
-      //this.shukei.shokuhi=0
-      //this.shukei.kotuhi=0
-      this.shukei.total = sum(res);
-      this.shukei.zakka = res["雑貨"];
-      this.shukei.shokuhi = res["食費"];
-      this.shukei.kotuhi = res["交通費"];
-      this.shukei.koteihi = res["固定費"];
-      
+      this.shukei=[this.fshukei(31),this.fshukei(62),this.fshukei(93)]
       console.log(this.shukei);
 
       let tableref = this.db.collection("accounts").doc(this.tableid);
@@ -336,10 +364,8 @@ export default {
         console.log(d.data());
         this.tablename = d.data().tablename;
         this.shukei.zankin = d.data().total;
-        this.shukei=Object.assign({},this.shukei)
+        this.shukei = Object.assign({}, this.shukei);
       });
-
-      
     },
 
     async initdatatable() {
@@ -355,28 +381,28 @@ export default {
         .get();
 
       this.tables = udoc.data().editable_tables;
-      this.tablenames=this.tables.map(x=>x.name)
-      this.tablesdic={}
-      this.tables.map(x=>this.tablesdic[x.name]=x.id)
-      console.log(this.tablenames)
+      this.tablenames = this.tables.map((x) => x.name);
+      this.tablesdic = {};
+      this.tables.map((x) => (this.tablesdic[x.name] = x.id));
+      console.log(this.tablenames);
       //if(!this.tables)this.tables=[]
 
       if (this.tables.length == 0) return;
-      console.log(this.tables)
-      if(this.tableid==null){
-        let tableid = this.tables[0].id
+      console.log(this.tables);
+      if (this.tableid == null) {
+        let tableid = this.tables[0].id;
         this.tableid = tableid;
-        this.tablename=this.tables[0].name
+        this.tablename = this.tables[0].name;
       }
 
-      console.log(this.tablename,this.tableid);
+      console.log(this.tablename, this.tableid);
       let tableref = this.db.collection("accounts").doc(this.tableid);
-      this.tableref = tableref
+      this.tableref = tableref;
 
       let tmp = await tableref
         .collection("accounttable")
         //.where("type_input","==","out")
-        .orderBy("date", "asc")
+        .orderBy("date", "desc")
         .get();
       //tmp=tmp.filter(x=>x.type_input=="out")
       tmp.forEach((x) => {
@@ -400,14 +426,17 @@ export default {
         }
       });
       this.headers.push({ text: "Actions", value: "actions", sortable: false });
-      console.log(header);     
+      console.log(header);
 
-      this.db.collection("accounts").doc(this.tableid).onSnapshot(()=>{this.init_shukei()})
-           
+      this.db
+        .collection("accounts")
+        .doc(this.tableid)
+        .onSnapshot(() => {
+          this.init_shukei();
+        });
     },
     submit() {
       if (this.$refs.form.validate()) {
-
         let col = this.db
           .collection("accounts")
           .doc(this.tableid)
@@ -418,11 +447,11 @@ export default {
         //・type1,type2から決まる税区分など
         //accounts/tableid/
         this.form.created_at = firebase.firestore.FieldValue.serverTimestamp();
-        if(this.form.type_input=="in")this.form.type=null
+        if (this.form.type_input == "in") this.form.type = null;
 
         let copyObj = {};
         Object.assign(copyObj, this.form);
-        this.datas.push(copyObj);
+        this.datas.unshift(copyObj);
         col.add(this.form);
 
         /*
@@ -436,7 +465,7 @@ export default {
         }
         this.shukei.zankin = this.shukei.zankin + sign * this.form.amount;
         */
-        
+
         /*
         axios.post("/api/submit", {
           name: this.name,
@@ -446,8 +475,8 @@ export default {
         });
         */
         if (this.headers.length < 3) this.initdatatable();
-        this.init_shukei()
-        this.init_form()
+        this.init_shukei();
+        this.init_form();
       }
     },
     clear() {
@@ -470,19 +499,18 @@ export default {
       console.log(this.datas[index]);
       const id = this.datas[index].docid;
 
-      if(confirm("Are you sure you want to delete this item?")){
+      if (confirm("Are you sure you want to delete this item?")) {
         this.datas.splice(index, 1);
 
         this.db
-        .collection("accounts")
-        .doc(this.tablesid)
-        .collection("accounttable")
-        .doc(id)
-        .delete();
+          .collection("accounts")
+          .doc(this.tablesid)
+          .collection("accounttable")
+          .doc(id)
+          .delete();
 
         //this.fix_shukei(item);
-        this.init_shukei()
-        
+        this.init_shukei();
       }
     },
     fix_shukei(item) {
@@ -512,7 +540,7 @@ export default {
         Object.assign(this.datas[this.editedIndex], this.editedItem);
 
         console.log(this.editedItem);
-        console.log(this.tables)
+        console.log(this.tables);
         this.db
           .collection("accounts")
           .doc(this.tableid)
@@ -530,10 +558,10 @@ export default {
       }
     },
     changetable() {
-      console.log(this.tablesdic)
-      this.tableid=this.tablesdic[this.tablename]
-      this.initdatatable()
-      this.init_shukei()
+      console.log(this.tablesdic);
+      this.tableid = this.tablesdic[this.tablename];
+      this.initdatatable();
+      this.init_shukei();
     },
     CreateTable() {
       let tname = window.prompt("テーブル名", "");
@@ -554,14 +582,12 @@ export default {
           console.log(this);
           tablesref.push(docref.id);
           this.tableid = docref.id;
-          let table={id:docref.id,name:tname}
+          let table = { id: docref.id, name: tname };
           this.db
             .collection("users")
             .doc(luser.uid)
             .update({
-              editable_tables: firebase.firestore.FieldValue.arrayUnion(
-                table
-              ),
+              editable_tables: firebase.firestore.FieldValue.arrayUnion(table),
             });
           this.tableid = docref.id;
           this.tablename = tname;
@@ -591,9 +617,9 @@ export default {
           .collection("users")
           .doc(this.uid)
           .update({ editable_tables: et });
-        
-        this.tablename="default"
-        this.changetable()
+
+        this.tablename = "default";
+        this.changetable();
       }
     },
   },
